@@ -1,0 +1,130 @@
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from tensorflow.keras import layers, models
+import matplotlib.pyplot as plt
+
+# Load MNIST data from CSV files
+train_data = pd.read_csv('mnist_train.csv')
+test_data = pd.read_csv('mnist_test.csv')
+
+# Split labels and features
+y_train = train_data.iloc[:, 0].values
+x_train = train_data.iloc[:, 1:].values
+y_test = test_data.iloc[:, 0].values
+x_test = test_data.iloc[:, 1:].values
+
+# Normalize pixel values to the range [0, 1]
+x_train = x_train.astype('float32') / 255.0
+x_test = x_test.astype('float32') / 255.0
+
+# Print the shape of the data
+print(f'Train data shape: {x_train.shape}, Train labels shape: {y_train.shape}')
+print(f'Test data shape: {x_test.shape}, Test labels shape: {y_test.shape}')
+
+# Define a Stacked Autoencoder
+input_dim = 784  # 28x28 images flattened
+
+# Encoder
+input_img = layers.Input(shape=(input_dim,))
+encoded = layers.Dense(512, activation='relu')(input_img)
+encoded = layers.Dense(256, activation='relu')(encoded)
+encoded = layers.Dense(128, activation='relu')(encoded)
+
+# Decoder
+decoded = layers.Dense(256, activation='relu')(encoded)
+decoded = layers.Dense(512, activation='relu')(decoded)
+decoded = layers.Dense(input_dim, activation='sigmoid')(decoded)
+
+# Autoencoder model
+autoencoder = models.Model(input_img, decoded)
+
+# Compile the model
+autoencoder.compile(optimizer='adam', loss='binary_crossentropy')
+
+# Train the autoencoder
+autoencoder.fit(x_train, x_train,
+                epochs=50,
+                batch_size=256,
+                shuffle=True,
+                validation_data=(x_test, x_test))
+
+# Encode and decode some digits
+decoded_imgs = autoencoder.predict(x_test)
+
+# Visualize the results
+n = 10  # Number of digits to display
+plt.figure(figsize=(20, 4))
+
+for i in range(n):
+    # Display original
+    ax = plt.subplot(2, n, i + 1)
+    plt.imshow(x_test[i].reshape(28, 28), cmap='gray')
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+
+    # Display reconstruction
+    ax = plt.subplot(2, n, i + 1 + n)
+    plt.imshow(decoded_imgs[i].reshape(28, 28), cmap='gray')
+    ax.get_xaxis().set_visible(False)
+    ax.get_yaxis().set_visible(False)
+
+plt.show()
+
+
+
+
+
+import numpy as np
+from tensorflow.keras import layers, models
+from tensorflow.keras.utils import to_categorical
+from sklearn.metrics import confusion_matrix, accuracy_score
+import matplotlib.pyplot as plt
+
+# Assuming `autoencoder` has already been trained
+# Extract the encoder part (remove the decoder)
+encoder = models.Model(inputs=autoencoder.input, outputs=autoencoder.layers[3].output)  # The 128-dimensional layer
+
+# Encode the training and test data to 128-dimensional feature representations
+x_train_encoded = encoder.predict(x_train)
+x_test_encoded = encoder.predict(x_test)
+
+# Convert labels to categorical for the classifier
+y_train_categorical = to_categorical(y_train, num_classes=10)
+y_test_categorical = to_categorical(y_test, num_classes=10)
+
+# Define a neural network classifier
+classifier_input = layers.Input(shape=(128,))
+x = layers.Dense(64, activation='relu')(classifier_input)
+x = layers.Dense(32, activation='relu')(x)
+classifier_output = layers.Dense(10, activation='softmax')(x)
+
+classifier = models.Model(classifier_input, classifier_output)
+
+# Compile the classifier
+classifier.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+# Train the classifier
+classifier.fit(x_train_encoded, y_train_categorical, epochs=20, batch_size=256, validation_data=(x_test_encoded, y_test_categorical))
+
+# Predict the labels for test data
+y_pred = classifier.predict(x_test_encoded)
+y_pred_labels = np.argmax(y_pred, axis=1)
+
+# Calculate accuracy
+accuracy = accuracy_score(y_test, y_pred_labels)
+print(f"Test Accuracy: {accuracy * 100:.2f}%")
+
+# Print confusion matrix
+conf_matrix = confusion_matrix(y_test, y_pred_labels)
+print("Confusion Matrix:")
+print(conf_matrix)
+
+# Visualize the confusion matrix
+plt.figure(figsize=(8, 8))
+plt.imshow(conf_matrix, cmap='Blues')
+plt.title("Confusion Matrix")
+plt.colorbar()
+plt.xlabel("Predicted Label")
+plt.ylabel("True Label")
+plt.show()
